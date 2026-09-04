@@ -103,15 +103,15 @@ El paquete de este repositorio es privado (`9router-app`), por lo que ejecutar d
 
 ```bash
 cp .env.example .env
-npm install
-PORT=20128 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run dev
+bun install
+PORT=20128 NEXT_PUBLIC_BASE_URL=http://localhost:20128 bun run dev
 ```
 
 Modo de producción:
 
 ```bash
-npm run build
-PORT=20128 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run start
+bun run build
+PORT=20128 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20128 bun run start
 ```
 
 URLs por defecto:
@@ -1129,8 +1129,8 @@ Model: cc/claude-opus-4-7
 # Clona e instala
 git clone https://github.com/decolua/9router.git
 cd 9router
-npm install
-npm run build
+bun install
+bun run build
 
 # Configura
 export JWT_SECRET="tu-secreto-seguro-cámbialo"
@@ -1145,11 +1145,11 @@ export API_KEY_SECRET="endpoint-proxy-api-key-secret"
 export MACHINE_ID_SALT="endpoint-proxy-salt"
 
 # Inicia
-npm run start
+bun run start
 
 # O usa PM2
 npm install -g pm2
-pm2 start npm --name 9router -- start
+pm2 start bun --name 9router -- run start
 pm2 save
 pm2 startup
 ```

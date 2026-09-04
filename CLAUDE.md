@@ -17,13 +17,14 @@ The code lives in `src/` (Next.js app + dashboard/compat APIs), `open-sse/` (the
 Dashboard/gateway (run from repo root):
 ```bash
 cp .env.example .env
-npm install
-PORT=20128 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run dev   # dev (webpack, port 20127 by default via next dev)
-npm run build && PORT=20128 HOSTNAME=0.0.0.0 npm run start           # production
+bun install
+PORT=20128 NEXT_PUBLIC_BASE_URL=http://localhost:20128 bun run dev   # dev (webpack, port 20127 by default via next dev)
+bun run build && PORT=20128 HOSTNAME=0.0.0.0 bun run start           # production
 ```
-- Bun variants: `npm run dev:bun` / `build:bun` / `start:bun`.
+- Bun variants (Next under the Bun runtime): `bun run dev:bun` / `build:bun` / `start:bun`.
 - Default runtime port is **20128** (dashboard at `/dashboard`, API at `/v1`).
-- Lint: `npx eslint .` (config `eslint.config.mjs`, extends `eslint-config-next`).
+- Lint: `bunx eslint .` (config `eslint.config.mjs`, extends `eslint-config-next`).
+- **JS deps are managed with bun** (`bun install`, committed `bun.lock`); `cli/`, Docker, and CI intentionally still use npm. Headroom's Python side is managed with uv (`uv tool install headroom-ai[proxy]`, pip fallback — see `src/lib/headroom/detect.js`).
 
 CLI package (`cli/`):
 ```bash
@@ -31,14 +32,14 @@ npm run cli:pack       # build + npm pack from root
 cd cli && npm run dev  # nodemon watch
 ```
 
-Tests (vitest, in `tests/`, an **independent** ESM package — not wired into root `npm test`):
+Tests (vitest, in `tests/`, an **independent** ESM package — not wired into root scripts):
 ```bash
-npm install                             # ROOT deps first — tests import from src/ which needs `open`, `undici`, etc.
-cd tests && npm install                 # then tests' own deps (vitest) → tests/node_modules (allowed by tests/.gitignore)
-npx vitest run                          # all tests; auto-discovers tests/vitest.config.js
-npx vitest run unit/capabilities.test.js   # single file (path relative to tests/)
+bun install                             # ROOT deps first — tests import from src/ which needs `open`, `undici`, etc.
+cd tests && bun install                 # then tests' own deps (vitest) → tests/node_modules (allowed by tests/.gitignore)
+bunx vitest run                          # all tests; auto-discovers tests/vitest.config.js
+bunx vitest run unit/capabilities.test.js   # single file (path relative to tests/)
 ```
-> The committed `tests/package.json` `test` script hardcodes Unix paths (`NODE_PATH=/tmp/node_modules …`) — a shared-install workaround from upstream. On Windows (or anywhere), ignore it and use the `npx vitest` form above; `vitest.config.js` resolves the `open-sse`/`@/` aliases from the repo root regardless of where vitest lives.
+> The committed `tests/package.json` `test` script hardcodes Unix paths (`NODE_PATH=/tmp/node_modules …`) — a shared-install workaround from upstream. On Windows (or anywhere), ignore it and use the `bunx vitest` form above; `vitest.config.js` resolves the `open-sse`/`@/` aliases from the repo root regardless of where vitest lives.
 >
 > **The suite is NOT expected to be all-green on a plain checkout.** ~938 pass, ~64 fail. Judge regressions with `tests/__baseline__/verify-no-regression.mjs`, not a raw run. Expected red:
 > - 26 catalogued in `tests/__baseline__/known-fails.txt` (rtk, oauth-cursor-auto-import, translator-request-normalization, …).

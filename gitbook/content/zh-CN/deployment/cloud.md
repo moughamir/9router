@@ -23,13 +23,13 @@ cd 9router/app
 ### 步骤 2:安装依赖
 
 ```bash
-npm install
+bun install
 ```
 
 ### 步骤 3:构建应用
 
 ```bash
-npm run build
+bun run build
 ```
 
 ### 步骤 4:配置环境变量
@@ -63,7 +63,7 @@ sudo chown $USER:$USER /var/lib/9router
 ### 步骤 6:启动应用
 
 ```bash
-npm run start
+bun run start
 ```
 
 ### 步骤 7:用 PM2 部署到生产环境
@@ -75,7 +75,7 @@ PM2 让应用持续运行,崩溃时自动重启:
 npm install -g pm2
 
 # 用 PM2 启动 9Router
-pm2 start npm --name 9router -- start
+pm2 start bun --name 9router -- run start
 
 # 保存 PM2 配置
 pm2 save
@@ -366,8 +366,8 @@ sudo apt update && sudo apt upgrade -y
 # 更新 9Router
 cd /path/to/9router/app
 git pull
-npm install
-npm run build
+bun install
+bun run build
 pm2 restart 9router
 ```
 

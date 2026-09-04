@@ -174,8 +174,8 @@ Cursor Settings → Models → Advanced:
 # Despliega en VPS
 git clone https://github.com/decolua/9router.git
 cd 9router/app
-npm install && npm run build
-npm start
+bun install && bun run build
+bun run start
 
 # Configura proxy reverso Nginx
 # Apunta Cursor a: https://your-domain.com/v1
@@ -208,13 +208,13 @@ npm install -g 9router
 ```bash
 git clone https://github.com/decolua/9router.git
 cd 9router/app
-npm install && npm run build
+bun install && bun run build
 
 export JWT_SECRET="your-secure-secret"
 export INITIAL_PASSWORD="your-password"
 export NODE_ENV="production"
 
-npm start
+bun run start
 ```
 
 ### Docker
@@ -230,7 +230,7 @@ docker run -d \
 ### Cloudflare Workers
 ```bash
 cd 9router/app
-npm run deploy:cloudflare
+bun run deploy:cloudflare
 ```
 
 **Variables de entorno:**
@@ -294,9 +294,9 @@ npm update -g 9router
 ```bash
 cd 9router/app
 git pull origin main
-npm install
-npm run build
-npm start
+bun install
+bun run build
+bun run start
 ```
 
 ### Docker
@@ -346,11 +346,11 @@ docker run -d \
    git checkout -b feature/your-feature
    
    # Haz cambios
-   npm install
-   npm run dev
+   bun install
+   bun run dev
    
    # Prueba
-   npm test
+   bunx vitest run
    
    # Commit y push
    git add .

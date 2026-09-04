@@ -95,15 +95,15 @@ Paket repo ini bersifat privat (`9router-app`), jadi menjalankan dari source/Doc
 
 ```bash
 cp .env.example .env
-npm install
-PORT=20128 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run dev
+bun install
+PORT=20128 NEXT_PUBLIC_BASE_URL=http://localhost:20128 bun run dev
 ```
 
 Mode produksi:
 
 ```bash
-npm run build
-PORT=20128 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20128 npm run start
+bun run build
+PORT=20128 HOSTNAME=0.0.0.0 NEXT_PUBLIC_BASE_URL=http://localhost:20128 bun run start
 ```
 
 URL default:
@@ -899,8 +899,8 @@ Disarankan menaruhnya di belakang reverse proxy (Nginx/Caddy) dengan HTTPS, dan 
 <summary><b>Cloudflare Workers</b></summary>
 
 ```bash
-npm run build
-npx wrangler deploy
+bun run build
+bunx wrangler deploy
 ```
 
 Atur `BASE_URL` dan `CLOUD_URL` sebagai environment variable di dashboard Cloudflare.

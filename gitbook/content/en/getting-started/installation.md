@@ -76,9 +76,9 @@ Clone and build from GitHub:
 ```bash
 git clone https://github.com/decolua/9router.git
 cd 9router/app
-npm install
-npm run build
-npm start
+bun install
+bun run build
+bun run start
 ```
 
 **Benefits:**
