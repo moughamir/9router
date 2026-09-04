@@ -1,3 +1,12 @@
+# v0.5.66 (2026-09-04)
+
+## Features
+- **Headroom**: uv-first Python package management — `pkgManager()` prefers the `uv tool` environment hosting headroom-ai (found via `uv tool list --show-paths`) so install, detection, and uninstall all target the same venv; uses `uv tool install --force` for pip-style upgrade semantics, falling back to `python -m pip` when uv is absent
+- **Build**: adopt bun as the JS package manager — add `packageManager` and commit `bun.lock` for the app, the GitBook docs site, and the test suite (Docker, CI, and the `cli/` npm package intentionally stay on npm)
+
+## Docs
+- **Docs**: switch setup and run commands to bun/uv across the README, its i18n copies, and GitBook pages; npm is retained for `9router` CLI installs, pm2, and Dockerfile snippets
+
 # v0.5.65 (2026-09-03)
 
 ## Features
