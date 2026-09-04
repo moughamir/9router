@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { findPython310, getInstalledHeadroomExtras, HEADROOM_COMPRESSION_EXTRAS } from "@/lib/headroom/detect";
+import { getInstalledHeadroomExtras, HEADROOM_COMPRESSION_EXTRAS } from "@/lib/headroom/detect";
 import { installHeadroomExtras, uninstallHeadroomExtras, getInstallLogTail } from "@/lib/headroom/process";
 
 export const dynamic = "force-dynamic";
@@ -10,8 +10,7 @@ export async function GET(req) {
     if (new URL(req.url).searchParams.get("log") === "1") {
       return NextResponse.json({ log: getInstallLogTail() });
     }
-    const python = findPython310();
-    const status = getInstalledHeadroomExtras(python);
+    const status = getInstalledHeadroomExtras();
     return NextResponse.json({
       available: HEADROOM_COMPRESSION_EXTRAS,
       ...status,

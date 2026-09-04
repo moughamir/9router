@@ -1,32 +1,78 @@
-import { execFileSync, execSync } from "child_process";
+import { execFileSync } from "child_process";
 import path from "path";
 
-// Extras that improve headroom compression quality. `proxy` is the base;
-// `code` adds tree-sitter AST compression; `ml` adds Kompress-v2 HF model.
-// Other `[all]` extras (image, voice, otel, reports, evals, ...) are not
-// useful for the 9router proxy use case, so we don't track them here.
-export const HEADROOM_COMPRESSION_EXTRAS = ["code", "ml"];
+// -----------------------------------------------------------------------------
+// Headroom package metadata
+// -----------------------------------------------------------------------------
 
-// Marker packages that each extra pulls in. Detected from `pip list --format=json`
-// so one call can answer both the installed version and active extras.
+// Extras that improve headroom compression quality.
+// `proxy` is the base package extra.
+// `code` adds tree-sitter AST compression.
+// `ml` adds Kompress-v2 / HuggingFace model support.
+export const HEADROOM_COMPRESSION_EXTRAS = [
+  "code",
+  "ml",
+];
+
+// Marker packages used to determine whether an extra is installed.
 export const EXTRA_MARKERS = {
-  code: ["tree-sitter", "tree-sitter-language-pack"],
-  ml: ["torch", "huggingface-hub"],
+  code: [
+    "tree-sitter",
+    "tree-sitter-language-pack",
+  ],
+  ml: [
+    "torch",
+    "huggingface-hub",
+  ],
 };
 
+// -----------------------------------------------------------------------------
+// Environment constants
+// -----------------------------------------------------------------------------
+
+const IS_WINDOWS = process.platform === "win32";
+
+const WHICH_COMMAND = IS_WINDOWS
+  ? "where"
+  : "which";
+
 const HEADROOM_PIP_TIMEOUT_MS = 8000;
+const HEADROOM_HEALTH_TIMEOUT_MS = 1500;
 
-const IS_WIN = process.platform === "win32";
-const WHICH_CMD = IS_WIN ? "where" : "which";
+const MIN_PYTHON = {
+  major: 3,
+  minor: 10,
+};
 
-// Extra bin dirs often missing from a packaged/launchd PATH (Python installs headroom here).
-const EXTRA_BINS = IS_WIN
+const PYTHON_CANDIDATES = [
+  "python3.13",
+  "python3.12",
+  "python3.11",
+  "python3.10",
+  "python3",
+  "python",
+];
+
+const LOOPBACK_HOSTS = new Set([
+  "localhost",
+  "127.0.0.1",
+  "::1",
+  "[::1]",
+  "0.0.0.0",
+]);
+
+// Extra binary locations frequently missing from packaged applications,
+// launchd services, desktop shells, etc.
+const EXTRA_BINS = IS_WINDOWS
   ? [
       `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python313\\Scripts`,
       `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python312\\Scripts`,
       `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python311\\Scripts`,
       `${process.env.LOCALAPPDATA || ""}\\Programs\\Python\\Python310\\Scripts`,
       `${process.env.APPDATA || ""}\\Python\\Python313\\Scripts`,
+      `${process.env.APPDATA || ""}\\Python\\Python312\\Scripts`,
+      `${process.env.APPDATA || ""}\\Python\\Python311\\Scripts`,
+      `${process.env.APPDATA || ""}\\Python\\Python310\\Scripts`,
     ]
   : [
       "/usr/local/bin",
@@ -40,161 +86,708 @@ const EXTRA_BINS = IS_WIN
       "/bin",
     ];
 
-const EXTENDED_PATH = [...EXTRA_BINS, process.env.PATH || ""].filter(Boolean).join(path.delimiter);
-const PYTHON_CANDIDATES = ["python3.13", "python3.12", "python3.11", "python3.10", "python3", "python"];
-const MIN_VERSION = [3, 10];
-const HEADROOM_HEALTH_TIMEOUT_MS = 1500;
-const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0"]);
+const EXTENDED_PATH = [
+  ...EXTRA_BINS,
+  process.env.PATH || "",
+]
+  .filter(Boolean)
+  .join(path.delimiter);
 
-export const DEFAULT_HEADROOM_URL = process.env.HEADROOM_URL || "http://localhost:8787";
+export const DEFAULT_HEADROOM_URL =
+  process.env.HEADROOM_URL ||
+  "http://localhost:8787";
 
-// Detect whether the headroom CLI is installed and where its binary lives.
-export function findHeadroomBinary() {
+// -----------------------------------------------------------------------------
+// Generic command helpers
+// -----------------------------------------------------------------------------
+
+function commandPath(command) {
   try {
-    const out = execSync(`${WHICH_CMD} headroom`, {
-      stdio: ["ignore", "pipe", "ignore"],
-      windowsHide: true,
-      env: { ...process.env, PATH: EXTENDED_PATH },
-    }).toString().trim();
-    // Windows `where` may return multiple lines — take the first.
-    return out ? out.split(/\r?\n/)[0].trim() : null;
+    const output = execFileSync(
+      WHICH_COMMAND,
+      [command],
+      {
+        stdio: [
+          "ignore",
+          "pipe",
+          "ignore",
+        ],
+        windowsHide: true,
+        env: {
+          ...process.env,
+          PATH: EXTENDED_PATH,
+        },
+      },
+    )
+      .toString()
+      .trim();
+
+    return output
+      ? output.split(/\r?\n/)[0].trim()
+      : null;
   } catch {
     return null;
   }
 }
 
-// Detect the best package manager: uv if available, else python3 -m pip
-export function pkgManager() {
+function runCommand(
+  command,
+  args = [],
+  options = {},
+) {
+  return execFileSync(
+    command,
+    args,
+    {
+      stdio: [
+        "ignore",
+        "pipe",
+        "pipe",
+      ],
+      windowsHide: true,
+      env: {
+        ...process.env,
+        PATH: EXTENDED_PATH,
+      },
+      ...options,
+    },
+  )
+    .toString()
+    .trim();
+}
+
+// -----------------------------------------------------------------------------
+// Headroom binary detection
+// -----------------------------------------------------------------------------
+
+export function findHeadroomBinary() {
+  return commandPath(
+    IS_WINDOWS
+      ? "headroom.exe"
+      : "headroom",
+  );
+}
+
+// -----------------------------------------------------------------------------
+// Central package manager
+// -----------------------------------------------------------------------------
+
+// When headroom was installed with `uv tool install`, its packages live in an
+// isolated env under the uv tools directory rather than in a Python on PATH.
+// Resolve that env's interpreter from `uv tool list --show-paths` so detection
+// and uninstall read the same environment the installer wrote to.
+function headroomUvToolPython(uv) {
   try {
-    execSync("uv --version", { stdio: ["ignore", "pipe", "ignore"] });
-    return { type: "uv", prefix: ["uv", "tool"] };
+    const output = runCommand(
+      uv,
+      ["tool", "list", "--show-paths"],
+      {
+        timeout: HEADROOM_PIP_TIMEOUT_MS,
+      },
+    );
+
+    const match = output.match(
+      /^headroom\s+v[^\s]+\s+\(([^)]+)\)/m,
+    );
+
+    if (!match) return null;
+
+    return path.join(
+      match[1],
+      IS_WINDOWS ? "Scripts" : "bin",
+      IS_WINDOWS ? "python.exe" : "python",
+    );
   } catch {
-    const py = findPython310();
-    return { type: "pip", prefix: py ? [py, "-m"] : ["python3", "-m"] };
+    return null;
   }
 }
 
-// Find a Python interpreter >= 3.10 (headroom-ai requires it). Returns null if none.
-// `python3`, `python3.13`, `python` can point at different envs on any OS. Prefer
-// the interpreter that can also see the installed `headroom-ai` package so the
-// dashboard probes and install action operate on the same interpreter as the CLI.
-// Falls back to the first version-eligible candidate when headroom-ai is not yet
-// installed anywhere (needed for the initial install).
-function pythonCandidates() {
-  const list = [];
-  const bin = findHeadroomBinary();
-  if (bin) {
-    const dir = path.dirname(bin);
-    const names = IS_WIN ? ["python.exe", "python3.exe"] : ["python3", "python3.13", "python"];
-    for (const n of names) list.push(path.join(dir, n));
-  }
-  for (const dir of EXTRA_BINS) {
-    if (!dir) continue;
-    for (const n of PYTHON_CANDIDATES) list.push(path.join(dir, IS_WIN ? `${n}.exe` : n));
-  }
-  list.push(...PYTHON_CANDIDATES);
-  return list;
-}
+/**
+ * Detect the complete Python/package environment.
+ *
+ * This is the ONLY place that decides:
+ *
+ * - operating system
+ * - available Python
+ * - Python version
+ * - available uv
+ * - preferred package manager
+ * - install command
+ * - uninstall command
+ * - pip command
+ *
+ * Policy:
+ *
+ *   install:
+ *     1. uv tool
+ *     2. Python -m pip
+ *
+ *   Python selection:
+ *     1. Python inside the uv-managed headroom tool env (uv tool install)
+ *     2. Python associated with installed Headroom
+ *     3. known Python installation directories
+ *     4. PATH
+ *     5. first supported Python >= 3.10
+ */
+export function pkgManager() {
+  const os = {
+    platform: process.platform,
+    isWindows: IS_WINDOWS,
+    isLinux: process.platform === "linux",
+    isMacOS: process.platform === "darwin",
+  };
 
-export function findPython310() {
-  let fallback = null;
-  for (const candidate of pythonCandidates()) {
-    try {
-      const ver = execSync(`${candidate} --version`, {
-        stdio: ["ignore", "pipe", "ignore"],
-        windowsHide: true,
-        env: { ...process.env, PATH: EXTENDED_PATH },
-      }).toString().trim();
-      const match = ver.match(/(\d+)\.(\d+)/);
-      if (!match) continue;
-      const [major, minor] = [parseInt(match[1], 10), parseInt(match[2], 10)];
-      if (!(major > MIN_VERSION[0] || (major === MIN_VERSION[0] && minor >= MIN_VERSION[1]))) continue;
-      if (!fallback) fallback = candidate;
-      try {
-        execFileSync(candidate, ["-m", "pip", "show", "headroom-ai"], {
-          stdio: ["ignore", "pipe", "ignore"],
-          windowsHide: true,
-          timeout: HEADROOM_PIP_TIMEOUT_MS,
-          env: { ...process.env, PATH: EXTENDED_PATH },
-        });
-        return candidate;
-      } catch {
-        // Keep scanning until an interpreter that sees headroom-ai is found.
-      }
-    } catch {
-      // candidate not present, try next
+  // ---------------------------------------------------------------------------
+  // Discover uv
+  // ---------------------------------------------------------------------------
+
+  const uv = commandPath(
+    IS_WINDOWS
+      ? "uv.exe"
+      : "uv",
+  );
+
+  // ---------------------------------------------------------------------------
+  // Discover Python candidates
+  // ---------------------------------------------------------------------------
+
+  const pythonCandidates = [];
+  const seenCandidates = new Set();
+
+  function addPythonCandidate(candidate) {
+    if (!candidate) return;
+    if (seenCandidates.has(candidate)) return;
+
+    seenCandidates.add(candidate);
+    pythonCandidates.push(candidate);
+  }
+
+  // Strongest signal: Python next to the Headroom binary.
+  const headroomBinary = findHeadroomBinary();
+
+  // Prefer the interpreter of a uv-managed headroom env when headroom is
+  // installed via uv tool.
+  if (uv && headroomBinary) {
+    const uvToolPython = headroomUvToolPython(uv);
+
+    if (uvToolPython && !seenCandidates.has(uvToolPython)) {
+      seenCandidates.add(uvToolPython);
+      pythonCandidates.unshift(uvToolPython);
     }
   }
-  return fallback;
-}
 
-// Probe whether a Headroom proxy is reachable at the given URL by hitting /health.
-export async function probeProxyRunning(url) {
-  if (!url) return false;
-  const base = String(url).replace(/\/$/, "");
-  try {
-    const res = await fetch(`${base}/health`, { signal: AbortSignal.timeout(HEADROOM_HEALTH_TIMEOUT_MS) });
-    return res.ok;
-  } catch {
-    return false;
+  if (headroomBinary) {
+    const headroomDir = path.dirname(
+      headroomBinary,
+    );
+
+    const siblingNames = IS_WINDOWS
+      ? [
+          "python.exe",
+          "python3.exe",
+        ]
+      : [
+          "python3",
+          "python",
+          "python3.13",
+        ];
+
+    for (const name of siblingNames) {
+      addPythonCandidate(
+        path.join(
+          headroomDir,
+          name,
+        ),
+      );
+    }
   }
-}
 
-export function isLoopbackHeadroomUrl(url) {
-  try {
-    const parsed = new URL(url);
-    return LOOPBACK_HOSTS.has(parsed.hostname);
-  } catch {
-    return false;
+  // Known installation directories.
+  for (const directory of EXTRA_BINS) {
+    if (!directory) continue;
+
+    for (const name of PYTHON_CANDIDATES) {
+      addPythonCandidate(
+        path.join(
+          directory,
+          IS_WINDOWS
+            ? `${name}.exe`
+            : name,
+        ),
+      );
+    }
   }
-}
 
-// Aggregate status for the dashboard: installed, running, python interpreter.
-export async function getHeadroomStatus(url) {
-  const path = findHeadroomBinary();
-  const python = findPython310();
-  const installed = Boolean(path);
-  const running = await probeProxyRunning(url);
-  const localUrl = isLoopbackHeadroomUrl(url);
-  const extrasStatus = installed ? getInstalledHeadroomExtras(python) : { installed: false, version: null, extras: { code: false, ml: false } };
+  // PATH-resolved candidates.
+  for (const name of PYTHON_CANDIDATES) {
+    addPythonCandidate(name);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Discover supported Python
+  // ---------------------------------------------------------------------------
+
+  let python = null;
+  let fallbackPython = null;
+
+  function parsePythonVersion(version) {
+    const match = String(version).match(
+      /(\d+)\.(\d+)/,
+    );
+
+    if (!match) {
+      return null;
+    }
+
+    return {
+      major: Number(match[1]),
+      minor: Number(match[2]),
+    };
+  }
+
+  function supportsPython(version) {
+    if (!version) {
+      return false;
+    }
+
+    return (
+      version.major > MIN_PYTHON.major ||
+      (
+        version.major === MIN_PYTHON.major &&
+        version.minor >= MIN_PYTHON.minor
+      )
+    );
+  }
+
+  function pythonHasHeadroom(candidate) {
+    try {
+      runCommand(
+        candidate,
+        [
+          "-m",
+          "pip",
+          "show",
+          "headroom-ai",
+        ],
+        {
+          timeout: HEADROOM_PIP_TIMEOUT_MS,
+        },
+      );
+
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  for (const candidate of pythonCandidates) {
+    try {
+      const versionOutput = runCommand(
+        candidate,
+        ["--version"],
+      );
+
+      const version =
+        parsePythonVersion(
+          versionOutput,
+        );
+
+      if (!supportsPython(version)) {
+        continue;
+      }
+
+      // Keep the first valid interpreter as fallback.
+      fallbackPython ||= candidate;
+
+      // Prefer an interpreter already containing headroom-ai.
+      if (
+        pythonHasHeadroom(
+          candidate,
+        )
+      ) {
+        python = candidate;
+        break;
+      }
+    } catch {
+      // Candidate unavailable.
+    }
+  }
+
+  python ||= fallbackPython;
+
+  // uv wins for installation.
+  //
+  // We still retain Python because uninstall/status operations target the
+  // existing Python environment.
+  const manager =
+    uv
+      ? "uv"
+      : python
+        ? "pip"
+        : null;
+
+  // ---------------------------------------------------------------------------
+  // Command builders
+  // ---------------------------------------------------------------------------
+
+  function requirePython() {
+    if (!python) {
+      const error = new Error(
+        "Python >= 3.10 not found",
+      );
+
+      error.code = "NO_PYTHON";
+
+      throw error;
+    }
+
+    return python;
+  }
+
+  function requireManager() {
+    if (!manager) {
+      const error = new Error(
+        "Neither uv nor Python >= 3.10 was found",
+      );
+
+      error.code = "NO_PACKAGE_MANAGER";
+
+      throw error;
+    }
+
+    return manager;
+  }
+
+  function install(spec) {
+    const selectedManager =
+      requireManager();
+
+    if (selectedManager === "uv") {
+      return {
+        manager: "uv",
+        command: uv,
+        args: [
+          "tool",
+          "install",
+          "--upgrade",
+          spec,
+        ],
+      };
+    }
+
+    return {
+      manager: "pip",
+      command: python,
+      args: [
+        "-m",
+        "pip",
+        "install",
+        "--upgrade",
+        spec,
+      ],
+    };
+  }
+
+  function uninstall(packages) {
+    const selectedPython =
+      requirePython();
+
+    const list = Array.isArray(packages)
+      ? packages
+      : [packages];
+
+    return {
+      manager: "pip",
+      command: selectedPython,
+      args: [
+        "-m",
+        "pip",
+        "uninstall",
+        "-y",
+        ...list,
+      ],
+    };
+  }
+
+  function pip(args = []) {
+    const selectedPython =
+      requirePython();
+
+    return {
+      manager: "pip",
+      command: selectedPython,
+      args: [
+        "-m",
+        "pip",
+        ...args,
+      ],
+    };
+  }
+
+  function version() {
+    return {
+      python: python
+        ? runCommand(
+            python,
+            ["--version"],
+          )
+        : null,
+
+      uv: uv
+        ? runCommand(
+            uv,
+            ["--version"],
+          )
+        : null,
+    };
+  }
+
   return {
-    installed,
-    path,
-    running,
+    os,
+
     python,
-    localUrl,
-    canStart: installed && localUrl,
-    version: extrasStatus.version,
-    extras: extrasStatus.extras,
+    uv,
+
+    manager,
+
+    headroom: {
+      binary: headroomBinary,
+      installed: Boolean(
+        headroomBinary,
+      ),
+    },
+
+    install,
+    uninstall,
+    pip,
+    version,
   };
 }
 
-// Parse installed headroom-ai version + which compression extras are
-// actually installed (detected via marker package presence). One `pip list`
-// call is enough to answer both questions.
-//
-// Returns: { installed: bool, version: string|null, extras: { code, ml } }
-export function getInstalledHeadroomExtras(python) {
-  const py = python || findPython310();
-  if (!py) return { installed: false, version: null, extras: { code: false, ml: false } };
+// -----------------------------------------------------------------------------
+// Backward compatibility
+// -----------------------------------------------------------------------------
+
+/**
+ * Existing callers can continue using findPython310().
+ *
+ * New code should normally use:
+ *
+ *   const pm = pkgManager();
+ *   pm.python
+ */
+export function findPython310() {
+  return pkgManager().python;
+}
+
+// -----------------------------------------------------------------------------
+// Headroom health helpers
+// -----------------------------------------------------------------------------
+
+export async function probeProxyRunning(
+  url,
+) {
+  if (!url) {
+    return false;
+  }
+
+  const base =
+    String(url).replace(
+      /\/$/,
+      "",
+    );
+
   try {
-    const out = execFileSync(py, ["-m", "pip", "list", "--format=json", "--disable-pip-version-check"], {
-      stdio: ["ignore", "pipe", "ignore"],
-      windowsHide: true,
-      timeout: HEADROOM_PIP_TIMEOUT_MS,
-      env: { ...process.env, PATH: EXTENDED_PATH },
-    }).toString();
-    const packages = JSON.parse(out);
-    const names = new Set(packages.map((p) => String(p.name || "").toLowerCase()));
-    const installed = names.has("headroom-ai");
-    if (!installed) return { installed: false, version: null, extras: { code: false, ml: false } };
-    const version = packages.find((p) => p.name?.toLowerCase() === "headroom-ai")?.version || null;
-    const extras = {};
-    for (const extra of HEADROOM_COMPRESSION_EXTRAS) {
-      extras[extra] = EXTRA_MARKERS[extra].some((m) => names.has(m));
-    }
-    return { installed: true, version, extras };
+    const response =
+      await fetch(
+        `${base}/health`,
+        {
+          signal:
+            AbortSignal.timeout(
+              HEADROOM_HEALTH_TIMEOUT_MS,
+            ),
+        },
+      );
+
+    return response.ok;
   } catch {
-    return { installed: false, version: null, extras: { code: false, ml: false } };
+    return false;
+  }
+}
+
+export function isLoopbackHeadroomUrl(
+  url,
+) {
+  try {
+    const parsed =
+      new URL(url);
+
+    return LOOPBACK_HOSTS.has(
+      parsed.hostname,
+    );
+  } catch {
+    return false;
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Headroom status
+// -----------------------------------------------------------------------------
+
+export async function getHeadroomStatus(
+  url,
+) {
+  const binary =
+    findHeadroomBinary();
+
+  const pm =
+    pkgManager();
+
+  const installed =
+    Boolean(binary);
+
+  const running =
+    await probeProxyRunning(url);
+
+  const localUrl =
+    isLoopbackHeadroomUrl(url);
+
+  const extrasStatus =
+    installed
+      ? getInstalledHeadroomExtras(
+          pm.python,
+        )
+      : {
+          installed: false,
+          version: null,
+          extras: {
+            code: false,
+            ml: false,
+          },
+        };
+
+  return {
+    installed,
+    path: binary,
+    running,
+    python: pm.python,
+    uv: pm.uv,
+    manager: pm.manager,
+    packageManager: pm.manager,
+    localUrl,
+    canStart:
+      installed && localUrl,
+    version:
+      extrasStatus.version,
+    extras:
+      extrasStatus.extras,
+  };
+}
+
+// -----------------------------------------------------------------------------
+// Installed package inspection
+// -----------------------------------------------------------------------------
+
+export function getInstalledHeadroomExtras(
+  python,
+) {
+  const py =
+    python || pkgManager().python;
+
+  if (!py) {
+    return {
+      installed: false,
+      version: null,
+      extras: {
+        code: false,
+        ml: false,
+      },
+    };
+  }
+
+  try {
+    const output =
+      runCommand(
+        py,
+        [
+          "-m",
+          "pip",
+          "list",
+          "--format=json",
+          "--disable-pip-version-check",
+        ],
+        {
+          timeout:
+            HEADROOM_PIP_TIMEOUT_MS,
+        },
+      );
+
+    const packages =
+      JSON.parse(output);
+
+    const names =
+      new Set(
+        packages.map(
+          (pkg) =>
+            String(
+              pkg.name || "",
+            ).toLowerCase(),
+        ),
+      );
+
+    const installed =
+      names.has("headroom-ai");
+
+    if (!installed) {
+      return {
+        installed: false,
+        version: null,
+        extras: {
+          code: false,
+          ml: false,
+        },
+      };
+    }
+
+    const packageInfo =
+      packages.find(
+        (pkg) =>
+          String(
+            pkg.name || "",
+          ).toLowerCase() ===
+          "headroom-ai",
+      );
+
+    const extras = {};
+
+    for (
+      const extra
+      of HEADROOM_COMPRESSION_EXTRAS
+    ) {
+      extras[extra] =
+        EXTRA_MARKERS[extra].some(
+          (marker) =>
+            names.has(
+              marker.toLowerCase(),
+            ),
+        );
+    }
+
+    return {
+      installed: true,
+      version:
+        packageInfo?.version ||
+        null,
+      extras,
+    };
+  } catch {
+    return {
+      installed: false,
+      version: null,
+      extras: {
+        code: false,
+        ml: false,
+      },
+    };
   }
 }

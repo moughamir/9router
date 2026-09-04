@@ -875,13 +875,13 @@ export default function TokenSaverClient() {
               <p className="text-sm font-medium">Install then click Start:</p>
               <div className="flex items-center gap-2">
                 <pre className="flex-1 rounded bg-black/5 dark:bg-white/5 p-2 text-xs font-mono overflow-x-auto">
-                  {`pip install "headroom-ai[proxy]"`}
+                  {headroomStatus.installHint || 'pip install "headroom-ai[proxy]"'}
                 </pre>
                 <Button
                   size="sm"
                   variant="ghost"
                   onClick={() =>
-                    copy(`pip install "headroom-ai[proxy]"`)
+                    copy(headroomStatus.installHint || 'pip install "headroom-ai[proxy]"')
                   }
                 >
                   {copied ? "Copied" : "Copy"}
