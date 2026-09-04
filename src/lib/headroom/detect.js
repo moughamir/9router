@@ -63,15 +63,23 @@ export function findHeadroomBinary() {
   }
 }
 
+// Detect the best package manager: uv if available, else python3 -m pip
+export function pkgManager() {
+  try {
+    execSync("uv --version", { stdio: ["ignore", "pipe", "ignore"] });
+    return { type: "uv", prefix: ["uv", "tool"] };
+  } catch {
+    const py = findPython310();
+    return { type: "pip", prefix: py ? [py, "-m"] : ["python3", "-m"] };
+  }
+}
+
 // Find a Python interpreter >= 3.10 (headroom-ai requires it). Returns null if none.
 // `python3`, `python3.13`, `python` can point at different envs on any OS. Prefer
 // the interpreter that can also see the installed `headroom-ai` package so the
 // dashboard probes and install action operate on the same interpreter as the CLI.
 // Falls back to the first version-eligible candidate when headroom-ai is not yet
 // installed anywhere (needed for the initial install).
-// Interpreters to probe, most specific first: the python next to the headroom
-// binary (guaranteed to have headroom-ai), then full paths from EXTRA_BINS, then
-// bare names resolved via PATH.
 function pythonCandidates() {
   const list = [];
   const bin = findHeadroomBinary();

@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { spawn } from "child_process";
 import { DATA_DIR } from "@/lib/dataDir.js";
-import { findHeadroomBinary, findPython310, HEADROOM_COMPRESSION_EXTRAS, EXTRA_MARKERS, getInstalledHeadroomExtras } from "./detect.js";
+import { findHeadroomBinary, findPython310, HEADROOM_COMPRESSION_EXTRAS, EXTRA_MARKERS, getInstalledHeadroomExtras, pkgManager } from "./detect.js";
 
 const HEADROOM_DIR = path.join(DATA_DIR, "headroom");
 const PID_FILE = path.join(HEADROOM_DIR, "proxy.pid");
@@ -172,7 +172,7 @@ export async function installHeadroomExtras(extras = []) {
     throw err;
   }
   if (!findHeadroomBinary()) {
-    const err = new Error("headroom-ai not installed (run `pip install headroom-ai[proxy]` first)");
+    const err = new Error("headroom-ai not installed (run `pip install headroom-ai[proxy]` or `uv tool install headroom-ai[proxy]` first)");
     err.code = "NOT_INSTALLED";
     throw err;
   }
@@ -181,7 +181,8 @@ export async function installHeadroomExtras(extras = []) {
   // ['proxy', ...requested]. No shell interpolation.
   const extrasList = ["proxy", ...requested].join(",");
   const spec = `headroom-ai[${extrasList}]`;
-  const args = ["-m", "pip", "install", "--upgrade", spec];
+  const pm = pkgManager();
+  const args = [...pm.prefix, "pip", "install", "--upgrade", spec];
 
   ensureDir();
   // Truncate ("w") so the log reflects only the current install for live progress.
