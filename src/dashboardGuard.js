@@ -37,6 +37,15 @@ const PUBLIC_API_PATHS = [
 // Keep root-level rewrites here too: middleware runs before Next.js rewrites.
 const PUBLIC_PREFIXES = ["/v1", "/v1beta", "/api/v1", "/api/v1beta", "/codex", "/responses"];
 
+// Unauthenticated chat completions endpoint — only reachable when BYPASS_AUTH=true.
+// Matches both the public rewritten path and the raw /api form (middleware runs
+// before rewrites, so both surface here).
+const UNAUTH_CHAT_PREFIXES = ["/chat/completions", "/api/chat/completions"];
+
+function isUnauthChatEndpoint(pathname) {
+  return UNAUTH_CHAT_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
+
 // Always require JWT token regardless of requireLogin setting
 const ALWAYS_PROTECTED = [
   "/api/shutdown",
@@ -201,6 +210,13 @@ export const __test__ = {
 
 export async function proxy(request) {
   const { pathname } = request.nextUrl;
+
+  // Unauthenticated chat endpoint: gated by env var. When off, hide it (404) so it
+  // never advertises itself as a live-but-protected route.
+  if (isUnauthChatEndpoint(pathname)) {
+    if (process.env.BYPASS_AUTH === "true") return NextResponse.next();
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
   // Local-only gate for spawn-capable / host-secret routes.
   if (LOCAL_ONLY_PATHS.some((p) => pathname.startsWith(p))) {

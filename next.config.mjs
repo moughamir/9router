@@ -31,14 +31,14 @@ const nextConfig = {
   images: {
     unoptimized: true
   },
+  // Tree-shake heavy barrel imports to cut compile + bundle size
+  optimizePackageImports: ["@xyflow/react", "@dnd-kit/core", "@dnd-kit/sortable", "material-symbols", "marked"],
   env: {},
   experimental: {
     // #1529/#1572: LLM clients can send long context or base64 image payloads through /v1 rewrites.
     proxyClientMaxBodySize,
     // Cache fetch responses across HMR refreshes for faster dev reloads.
     serverComponentsHmrCache: true,
-    // Tree-shake heavy barrel imports to cut compile + bundle size
-    optimizePackageImports: ["@xyflow/react", "@dnd-kit/core", "@dnd-kit/sortable", "material-symbols", "marked"],
   },
   webpack: (config, { isServer }) => {
     // Ignore fs/path modules in browser bundle
@@ -90,6 +90,11 @@ const nextConfig = {
       {
         source: "/v1",
         destination: "/api/v1"
+      },
+      // Unauthenticated chat completions (only active when BYPASS_AUTH=true)
+      {
+        source: "/chat/completions",
+        destination: "/api/chat/completions"
       }
     ];
   }

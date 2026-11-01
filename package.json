@@ -3,16 +3,21 @@
   "version": "0.5.66",
   "description": "9Router web dashboard",
   "private": true,
-  "packageManager": "bun@1.4.0",
+  "packageManager": "bun@1.4.2",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "next dev --port 20127",
     "dev:webpack": "next dev --webpack --port 20127",
-    "build": "next build --webpack",
+    "build": "next build --turbopack",
+    "build:webpack": "next build --webpack && node scripts/copy-standalone-assets.mjs",
     "postbuild": "node scripts/copy-standalone-assets.mjs",
     "postbuild:bun": "node scripts/copy-standalone-assets.mjs",
     "start": "node custom-server.js --port 20127",
     "dev:bun": "bun --bun next dev --webpack --port 20127",
-    "build:bun": "bun --bun next build --webpack",
+    "build:bun": "bun --bun next build --turbopack",
+    "build:bun:webpack": "bun --bun next build --webpack && node scripts/copy-standalone-assets.mjs",
     "start:bun": "bun ./.next/standalone/custom-server.js",
     "cli:pack": "npm --prefix cli run pack:cli",
     "cli:publish": "npm --prefix cli run publish:cli"
@@ -23,7 +28,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@monaco-editor/react": "^4.7.0",
-    "@next/third-parties": "^16.2.9",
+    "@next/third-parties": "^16.3.4",
     "@node-saml/node-saml": "^5.1.0",
     "@xyflow/react": "^12.10.1",
     "bcryptjs": "^3.0.3",
@@ -31,37 +36,37 @@
     "confbox": "^0.2.4",
     "express": "^5.2.1",
     "http-proxy-middleware": "^3.0.5",
-    "jose": "^6.1.3",
-    "marked": "^18.0.1",
+    "jose": "^6.2.12",
+    "marked": "^18.0.11",
     "material-symbols": "^0.44.6",
     "monaco-editor": "^0.55.1",
-    "next": "^16.1.6",
+    "next": "^16.3.4",
     "node-forge": "^1.3.3",
     "node-machine-id": "^1.1.12",
     "open": "^11.0.0",
     "ora": "^9.1.0",
     "prop-types": "^15.8.1",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "react-is": "^16.13.1",
     "recharts": "^3.7.0",
     "selfsigned": "^5.5.0",
     "socks-proxy-agent": "^8.0.5",
-    "sql.js": "^1.14.1",
+    "sql.js": "^1.14.2",
     "undici": "^7.19.2",
     "uuid": "^13.0.0",
     "zustand": "^5.0.10"
   },
   "optionalDependencies": {
-    "better-sqlite3": "^12.6.2"
+    "better-sqlite3": "^13.0.3"
   },
   "comment_better_sqlite3": "kept in optionalDependencies so npm install doesn't fail on systems without build tools — sql.js is used as fallback at runtime",
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.1.18",
+    "@tailwindcss/postcss": "^4.3.3",
     "eslint": "^9",
-    "eslint-config-next": "16.1.6",
+    "eslint-config-next": "16.3.4",
     "postcss": "^8.5.6",
-    "tailwindcss": "^4"
+    "tailwindcss": "^4.3.3"
   },
   "trustedDependencies": [
     "unrs-resolver"

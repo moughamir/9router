@@ -1,0 +1,5 @@
+# Pin and enforce the Bun toolchain across the monorepo.
+# Add new deps with `bun add <pkg>` (updates the lockfile); a bare `bun install`
+# fails loudly if bun.lock drifts from package.json.
+[install]
+frozenLockfile = true

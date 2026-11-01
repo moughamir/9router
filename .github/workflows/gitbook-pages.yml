@@ -25,11 +25,15 @@ jobs:
         with:
           node-version: 24
 
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
       - name: Install deps
-        run: npm install --no-audit --no-fund
+        run: bun install --frozen-lockfile
 
       - name: Build static export
-        run: npm run build
+        run: bun run build
         env:
           NODE_ENV: production
           NEXT_PUBLIC_BASE_PATH: ""

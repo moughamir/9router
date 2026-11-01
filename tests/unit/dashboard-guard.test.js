@@ -287,6 +287,63 @@ describe("dashboard guard local-only access", () => {
   });
 });
 
+describe("dashboard guard unauthenticated chat endpoint", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.NINEROUTER_PEER_TOKEN = PEER_TOKEN;
+    mocks.getSettings.mockResolvedValue({ requireLogin: true });
+    mocks.validateApiKey.mockResolvedValue(false);
+    mocks.getConsistentMachineId.mockResolvedValue("cli-token");
+    mocks.verifyDashboardAuthToken.mockResolvedValue(false);
+  });
+
+  afterEach(() => {
+    delete process.env.BYPASS_AUTH;
+  });
+
+  it("hides /chat/completions (404) when BYPASS_AUTH is unset", async () => {
+    const response = await proxy(request("/chat/completions", { host: "router.example.com" }));
+
+    expect(response.status).toBe(404);
+    expect(response.body.error).toBe("Not found");
+  });
+
+  it("hides /api/chat/completions (404) when BYPASS_AUTH is unset", async () => {
+    const response = await proxy(request("/api/chat/completions", { host: "router.example.com" }));
+
+    expect(response.status).toBe(404);
+    expect(response.body.error).toBe("Not found");
+  });
+
+  it("passes /chat/completions through when BYPASS_AUTH=true", async () => {
+    process.env.BYPASS_AUTH = "true";
+
+    const response = await proxy(request("/chat/completions", { host: "router.example.com" }));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+    expect(mocks.verifyDashboardAuthToken).not.toHaveBeenCalled();
+  });
+
+  it("passes /api/chat/completions through when BYPASS_AUTH=true", async () => {
+    process.env.BYPASS_AUTH = "true";
+
+    const response = await proxy(request("/api/chat/completions", { host: "router.example.com" }));
+
+    expect(response).toBe(mocks.nextResponse);
+    expect(mocks.validateApiKey).not.toHaveBeenCalled();
+    expect(mocks.verifyDashboardAuthToken).not.toHaveBeenCalled();
+  });
+
+  it("keeps other API paths protected when BYPASS_AUTH=true", async () => {
+    process.env.BYPASS_AUTH = "true";
+
+    const response = await proxy(request("/api/settings", { host: "router.example.com" }));
+
+    expect(response.status).toBe(401);
+  });
+});
+
 describe("dashboard guard helpers", () => {
   it("extracts bearer API keys before x-api-key", () => {
     const apiRequest = request("/v1/chat/completions", {

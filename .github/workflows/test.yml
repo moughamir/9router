@@ -1,0 +1,38 @@
+name: Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: tests
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Install root deps
+        run: bun install --frozen-lockfile
+
+      - name: Install test deps
+        working-directory: tests
+        run: bun install --frozen-lockfile
+
+      - name: Run test suite
+        working-directory: tests
+        run: bunx vitest run --reporter=json --outputFile=results.json
+
+      - name: Verify no regression vs baseline
+        run: node tests/__baseline__/verify-no-regression.mjs tests/results.json

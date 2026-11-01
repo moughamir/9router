@@ -1,19 +1,21 @@
 # syntax=docker/dockerfile:1.7
-ARG NODE_IMAGE=node:22-alpine
-FROM ${NODE_IMAGE} AS base
+ARG NODE_IMAGE=node:24-alpine
+ARG BUN_IMAGE=oven/bun:1.4.2-alpine
+
+FROM ${BUN_IMAGE} AS builder
 WORKDIR /app
 
-FROM base AS builder
+# Build tools for native deps (better-sqlite3 etc.) + node for Next's build
+# scripts (next CLI + postbuild run on the Node runtime, not Bun).
+RUN apk --no-cache upgrade && apk --no-cache add python3 make g++ linux-headers nodejs
 
-RUN apk --no-cache upgrade && apk --no-cache add python3 make g++ linux-headers
-
-COPY package.json ./
-RUN --mount=type=cache,target=/root/.npm \
-  npm install
+COPY package.json bun.lock ./
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+  bun install --frozen-lockfile
 
 COPY . ./
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm run build
+RUN bun run build
 
 FROM ${NODE_IMAGE} AS runner
 WORKDIR /app
